@@ -4,10 +4,11 @@ from geopy.exc import (GeocoderTimedOut, GeocoderUnavailable,
                        GeocoderRateLimited, GeocoderServiceError)
 from streamlit.testing.v1 import AppTest
 
-import program
-from program import GeocodingService, MESSAGES
+from pathlib import Path
 
-APP = program.__file__
+from core import GeocodingService, MESSAGES
+
+APP = str(Path(__file__).resolve().parent.parent / "program.py")
 
 
 class Place:
