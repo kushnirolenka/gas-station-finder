@@ -195,8 +195,10 @@ def main():
     location_str = st.sidebar.text_input("Введіть ваше місцезнаходження:", value="Львів, Університетська 1")
 
     if location_str:
-        geolocator = Nominatim(user_agent="gas_station_locator_v5")
-        user_location = geolocator.geocode(location_str)
+        user_location, geocode_error = get_geocoder().locate(location_str)
+        if geocode_error:
+            st.sidebar.error(geocode_error)  # Д3: користувач бачить причину
+            return
 
         if user_location:
             gas_stations, gas_stations_rating = fetch_gas_stations_from_csv()
