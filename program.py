@@ -13,9 +13,10 @@ import mapview
 DATA_FILE = "gas_stations.csv"
 
 
-@st.cache_data
-def read_stations(path):
-    return core.load_stations(path)
+@st.cache_resource
+def get_index(path):
+    """Станції в масивах NumPy: створюються один раз і живуть увесь сеанс."""
+    return core.StationIndex(core.load_stations(path))
 
 
 @st.cache_resource
@@ -44,9 +45,9 @@ def show_candidates(candidates):
         st.sidebar.write(f"   - Потрібно: {c.fuel_needed_l:.2f} л")
 
 
-def show_walking_option(stations, lat, lon):
+def show_walking_option(index, lat, lon):
     st.sidebar.warning("⛽ Палива не вистачає до жодної заправки!")
-    station, distance = core.nearest_station(stations, lat, lon)
+    station, distance = index.nearest(lat, lon)
     st.sidebar.info(
         f"🚶 Найближча заправка: **{station.name}**\n\n"
         f"📍 Відстань пішки: **{distance:.2f} км**\n\n"
@@ -74,7 +75,7 @@ def main():
         st.sidebar.error(error)
         return
     try:
-        stations = read_stations(DATA_FILE)
+        index = get_index(DATA_FILE)
     except core.StationDataError as e:
         st.error(str(e))
         return
@@ -82,14 +83,14 @@ def main():
     consumption = core.FUEL_CONSUMPTION[fuel_type]
     lat, lon = place.latitude, place.longitude
     radius = core.reach_radius_km(fuel_left, consumption, engine_volume)
-    candidates = core.find_reachable(stations, lat, lon, fuel_left, consumption, engine_volume)
+    candidates = core.find_reachable(index, lat, lon, fuel_left, consumption, engine_volume)
 
     folium_static(mapview.build_map(lat, lon, radius, candidates))
     show_candidates(candidates)
     if candidates:
         show_route_choice(candidates, lat, lon)
     else:
-        show_walking_option(stations, lat, lon)
+        show_walking_option(index, lat, lon)
 
 
 if __name__ == "__main__":

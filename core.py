@@ -8,6 +8,8 @@ import math
 import time
 from dataclasses import dataclass
 
+import numpy as np
+
 from geopy.exc import (GeocoderTimedOut, GeocoderUnavailable,
                        GeocoderRateLimited, GeocoderServiceError)
 
@@ -98,9 +100,11 @@ def walking_minutes(distance_km):
 
 
 # ------------------------------------------------------------------ пошук
-def find_reachable(stations, lat, lon, fuel_left, consumption, engine_volume,
-                   limit=MAX_RESULTS):
-    """Найближчі станції в межах зони досяжності, до яких вистачає пального."""
+def find_reachable_loop(stations, lat, lon, fuel_left, consumption, engine_volume,
+                        limit=MAX_RESULTS):
+    """Еталонний пошук циклом Python (алгоритм версій v1.0-v1.3).
+
+    Залишено для перевірки нового алгоритму та вимірювань."""
     radius = reach_radius_km(fuel_left, consumption, engine_volume)
     inside = []
     for station in stations:
@@ -116,10 +120,99 @@ def find_reachable(stations, lat, lon, fuel_left, consumption, engine_volume,
     return result
 
 
-def nearest_station(stations, lat, lon):
-    """Найближча станція незалежно від запасу пального: (Station, км)."""
+def nearest_station_loop(stations, lat, lon):
+    """Еталонний варіант: найближча станція циклом Python."""
     return min(((s, haversine_km(lat, lon, s.latitude, s.longitude)) for s in stations),
                key=lambda pair: pair[1])
+
+
+
+# ------------------------------------------- пошук з NumPy (Д11, ітерація v2.0)
+class StationIndex:
+    """Координати станцій у масивах NumPy.
+
+    Радіани та cos(широти) обчислюються один раз під час створення, тому
+    кожен запит - це кілька операцій над масивами замість циклу Python.
+    """
+
+    def __init__(self, stations):
+        self.stations = list(stations)
+        self._lat = np.radians([s.latitude for s in self.stations])
+        self._lon = np.radians([s.longitude for s in self.stations])
+        self._cos_lat = np.cos(self._lat)
+
+    def __len__(self):
+        return len(self.stations)
+
+    def _distances(self, lat, lon):
+        phi, lam = math.radians(lat), math.radians(lon)
+        a = (np.sin((self._lat - phi) / 2) ** 2
+             + math.cos(phi) * self._cos_lat * np.sin((self._lon - lam) / 2) ** 2)
+        return 2 * EARTH_RADIUS_KM * np.arcsin(np.sqrt(np.minimum(a, 1.0)))
+
+    def within_radius(self, lat, lon, radius_km, limit=MAX_RESULTS):
+        """До limit найближчих станцій у межах радіуса: [(км, Station), ...]."""
+        d = self._distances(lat, lon)
+        idx = np.flatnonzero(d <= radius_km)
+        if idx.size > limit:  # частковий добір замість повного сортування
+            idx = idx[np.argpartition(d[idx], limit - 1)[:limit]]
+        idx = idx[np.argsort(d[idx], kind="stable")]
+        return [(float(d[i]), self.stations[i]) for i in idx]
+
+    def nearest(self, lat, lon):
+        """Найближча станція незалежно від запасу пального: (Station, км)."""
+        d = self._distances(lat, lon)
+        i = int(np.argmin(d))
+        return self.stations[i], float(d[i])
+
+
+class KDStationIndex:
+    """k-d дерево в тривимірних координатах на одиничній сфері (формули (1.8)-(1.10)).
+
+    Побудова коштує O(n log n), запит майже не залежить від n. Доцільне для
+    сотень тисяч станцій і багатьох запитів.
+    """
+
+    def __init__(self, stations):
+        from scipy.spatial import cKDTree
+        self.stations = list(stations)
+        lat = np.radians([s.latitude for s in self.stations])
+        lon = np.radians([s.longitude for s in self.stations])
+        self._tree = cKDTree(self._xyz(lat, lon))
+
+    @staticmethod
+    def _xyz(lat, lon):
+        return np.column_stack([np.cos(lat) * np.cos(lon),
+                                np.cos(lat) * np.sin(lon),
+                                np.sin(lat)])
+
+    def within_radius(self, lat, lon, radius_km, limit=MAX_RESULTS):
+        point = self._xyz(np.radians([lat]), np.radians([lon]))[0]
+        chord_max = 2 * math.sin(min(radius_km / EARTH_RADIUS_KM, math.pi) / 2)   # (1.10)
+        found = self._tree.query(point, k=min(limit, len(self.stations)),
+                                 distance_upper_bound=chord_max * (1 + 1e-9))
+        result = []
+        for chord, i in zip(np.atleast_1d(found[0]), np.atleast_1d(found[1])):
+            if i < len(self.stations) and np.isfinite(chord):
+                distance = 2 * EARTH_RADIUS_KM * math.asin(min(chord / 2, 1.0))  # (1.9)
+                if distance <= radius_km:
+                    result.append((float(distance), self.stations[i]))
+        return result
+
+
+def find_reachable(index, lat, lon, fuel_left, consumption, engine_volume,
+                   limit=MAX_RESULTS):
+    """Найближчі станції в межах зони досяжності, до яких вистачає пального.
+
+    index: StationIndex або KDStationIndex.
+    """
+    radius = reach_radius_km(fuel_left, consumption, engine_volume)
+    result = []
+    for distance, station in index.within_radius(lat, lon, radius, limit):
+        need = fuel_needed_l(distance, consumption, engine_volume)
+        if need <= fuel_left + EPS:
+            result.append(Candidate(station, distance, need))
+    return result
 
 
 def directions_url(origin_lat, origin_lon, dest_lat, dest_lon, mode):
