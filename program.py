@@ -37,7 +37,7 @@ def fetch_gas_stations_from_csv():
     try:
         df = pd.read_csv('gas_stations.csv')
         gas_stations = df[['id', 'name', 'latitude', 'longitude']].values.tolist()
-        gas_stations_rating = dict(zip(df['name'], df['rating']))
+        gas_stations_rating = dict(zip(df['id'], df['rating']))  # Д1: ключ - id станції
         return gas_stations, gas_stations_rating
     except FileNotFoundError:
         st.error("""
@@ -148,7 +148,7 @@ def main():
                 fuel_needed = calculate_fuel_needed(distance, FUEL_CONSUMPTION[fuel_type.lower()], motor_power)
 
                 if fuel_needed <= gas_left:
-                    rating = gas_stations_rating.get(station_name, 'Н/Д')
+                    rating = gas_stations_rating.get(station_id, 'Н/Д')
                     fuel_needed_gas_station.append((station_id, station_name, distance, rating, fuel_needed))
 
                     st.sidebar.write(f"{idx}. {station_name}")
