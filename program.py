@@ -53,6 +53,10 @@ def fetch_gas_stations_from_csv():
 def calculate_fuel_needed(distance, fuel_consumption, motor_power):
     return (distance / 100) * fuel_consumption * motor_power
 
+# Д2: радіус зони досяжності узгоджений з calculate_fuel_needed (формула (2.3))
+def reach_radius(gas_left, fuel_consumption, motor_power):
+    return gas_left / (fuel_consumption * motor_power) * 100
+
 # Функція для генерації карти
 def generate_map(user_location, gas_stations, fuel_needed_gas_station, max_distance):
     mymap = folium.Map(location=[user_location.latitude, user_location.longitude], zoom_start=13)
@@ -127,7 +131,7 @@ def main():
                 st.warning("База заправок порожня.")
                 return
 
-            max_distance = (gas_left / FUEL_CONSUMPTION[fuel_type.lower()]) * 100
+            max_distance = reach_radius(gas_left, FUEL_CONSUMPTION[fuel_type.lower()], motor_power)
 
             # Використовуємо формулу гаверсинусів для обчислення відстані
             gas_stations_with_distances = []
