@@ -5,6 +5,8 @@ import folium
 from streamlit_folium import folium_static
 from geopy.geocoders import Nominatim
 
+EPS = 1e-9  # допуск порівняння дійсних чисел (л)
+
 # Константи споживання пального
 FUEL_CONSUMPTION = {
     'бензин': 8.5,  # л/100км
@@ -148,17 +150,20 @@ def main():
             st.sidebar.subheader("Найближчі заправки:")
             fuel_needed_gas_station = []
 
-            for idx, (station_id, station_name, distance) in enumerate(sorted_gas_stations[:5], start=1):
+            for station_id, station_name, distance in sorted_gas_stations[:5]:
                 fuel_needed = calculate_fuel_needed(distance, FUEL_CONSUMPTION[fuel_type.lower()], motor_power)
 
-                if fuel_needed <= gas_left:
+                if fuel_needed <= gas_left + EPS:
                     rating = gas_stations_rating.get(station_id, 'Н/Д')
                     fuel_needed_gas_station.append((station_id, station_name, distance, rating, fuel_needed))
 
-                    st.sidebar.write(f"{idx}. {station_name}")
-                    st.sidebar.write(f"   - Відстань: {distance:.2f} км")
-                    st.sidebar.write(f"   - Рейтинг: {rating}")
-                    st.sidebar.write(f"   - Потрібно: {fuel_needed:.2f} л")
+            # Д6: нумерація безперервна і збігається з номерами у виборі станції
+            for number, (_, station_name, distance, rating, fuel_needed) in enumerate(
+                    fuel_needed_gas_station, start=1):
+                st.sidebar.write(f"{number}. {station_name}")
+                st.sidebar.write(f"   - Відстань: {distance:.2f} км")
+                st.sidebar.write(f"   - Рейтинг: {rating}")
+                st.sidebar.write(f"   - Потрібно: {fuel_needed:.2f} л")
 
             if not fuel_needed_gas_station:
                 generate_map(user_location, gas_stations, [], max_distance)
