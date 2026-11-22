@@ -1,11 +1,10 @@
-"""Карта АЗС: інтерфейс Streamlit (версія v1.3).
+"""Карта АЗС: інтерфейс Streamlit (версія v2.0).
 
 Уся логіка винесена в core.py і mapview.py; тут лише елементи керування
 та виведення. Запуск: streamlit run program.py
 """
 import streamlit as st
 from geopy.geocoders import Nominatim
-from streamlit_folium import folium_static
 
 import core
 import mapview
@@ -23,6 +22,15 @@ def get_index(path):
 def get_geocoder():
     """Один екземпляр сервісу на весь сеанс: кеш переживає перезапуски програми."""
     return core.GeocodingService(Nominatim(user_agent="gas_station_locator_v5", timeout=5))
+
+
+def show_map(map_html):
+    """Вставляє готовий HTML-код карти (новіші версії Streamlit мають st.iframe)."""
+    if hasattr(st, "iframe"):
+        st.iframe(map_html, height=500)
+    else:
+        from streamlit.components.v1 import html as components_html
+        components_html(map_html, height=500)
 
 
 def read_inputs():
@@ -85,7 +93,7 @@ def main():
     radius = core.reach_radius_km(fuel_left, consumption, engine_volume)
     candidates = core.find_reachable(index, lat, lon, fuel_left, consumption, engine_volume)
 
-    folium_static(mapview.build_map(lat, lon, radius, candidates))
+    show_map(mapview.map_html(lat, lon, radius, candidates))
     show_candidates(candidates)
     if candidates:
         show_route_choice(candidates, lat, lon)

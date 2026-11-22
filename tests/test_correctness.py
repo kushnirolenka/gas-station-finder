@@ -61,3 +61,12 @@ def test_app_reports_missing_data_file(app_env):
     os.remove("gas_stations.csv")
     at = AppTest.from_file(APP, default_timeout=60).run()
     assert any("не знайдено" in e.value for e in at.error)
+
+
+def test_app_offers_walking_route_when_no_fuel(app_env):
+    app_env()
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    at.sidebar.number_input[0].set_value(0.0).run()
+    assert not at.exception
+    assert any("Палива не вистачає" in w.value for w in at.sidebar.warning)
+    assert any("travelmode=walking" in m.value for m in at.sidebar.markdown)
