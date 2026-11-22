@@ -81,7 +81,7 @@ def test_find_reachable_matches_brute_force_on_100_queries():
     stations = stations_from(make_stations())
     for lat, lon, fuel, ft, k in random_queries(100):
         c = core.FUEL_CONSUMPTION[ft]
-        found = core.find_reachable(stations, lat, lon, fuel, c, k)
+        found = core.find_reachable_loop(stations, lat, lon, fuel, c, k)
         assert [x.station.id for x in found] == brute_force(stations, lat, lon, fuel, c, k)
         assert all(x.fuel_needed_l <= fuel + core.EPS for x in found)
         assert [x.distance_km for x in found] == sorted(x.distance_km for x in found)
@@ -89,10 +89,10 @@ def test_find_reachable_matches_brute_force_on_100_queries():
 
 def test_find_reachable_empty_when_no_fuel():
     stations = stations_from(make_stations())
-    assert core.find_reachable(stations, 49.84, 24.03, 0.0, 6.5, 1.0) == []
+    assert core.find_reachable_loop(stations, 49.84, 24.03, 0.0, 6.5, 1.0) == []
 
 
 def test_nearest_station_ignores_fuel():
     stations = stations_from([(1, "A", 49.0, 24.0, 7), (2, "B", 49.5, 24.0, 8)])
-    station, distance = core.nearest_station(stations, 49.45, 24.0)
+    station, distance = core.nearest_station_loop(stations, 49.45, 24.0)
     assert station.id == 2 and distance == pytest.approx(5.56, abs=0.05)

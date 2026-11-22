@@ -1,11 +1,10 @@
-"""Карта АЗС: інтерфейс Streamlit (версія v1.3).
+"""Карта АЗС: інтерфейс Streamlit (версія v2.0).
 
 Уся логіка винесена в core.py і mapview.py; тут лише елементи керування
 та виведення. Запуск: streamlit run program.py
 """
 import streamlit as st
 from geopy.geocoders import Nominatim
-from streamlit_folium import folium_static
 
 import core
 import mapview
@@ -13,15 +12,25 @@ import mapview
 DATA_FILE = "gas_stations.csv"
 
 
-@st.cache_data
-def read_stations(path):
-    return core.load_stations(path)
+@st.cache_resource
+def get_index(path):
+    """Станції в масивах NumPy: створюються один раз і живуть увесь сеанс."""
+    return core.StationIndex(core.load_stations(path))
 
 
 @st.cache_resource
 def get_geocoder():
     """Один екземпляр сервісу на весь сеанс: кеш переживає перезапуски програми."""
     return core.GeocodingService(Nominatim(user_agent="gas_station_locator_v5", timeout=5))
+
+
+def show_map(map_html):
+    """Вставляє готовий HTML-код карти (новіші версії Streamlit мають st.iframe)."""
+    if hasattr(st, "iframe"):
+        st.iframe(map_html, height=500)
+    else:
+        from streamlit.components.v1 import html as components_html
+        components_html(map_html, height=500)
 
 
 def read_inputs():
@@ -44,9 +53,9 @@ def show_candidates(candidates):
         st.sidebar.write(f"   - Потрібно: {c.fuel_needed_l:.2f} л")
 
 
-def show_walking_option(stations, lat, lon):
+def show_walking_option(index, lat, lon):
     st.sidebar.warning("⛽ Палива не вистачає до жодної заправки!")
-    station, distance = core.nearest_station(stations, lat, lon)
+    station, distance = index.nearest(lat, lon)
     st.sidebar.info(
         f"🚶 Найближча заправка: **{station.name}**\n\n"
         f"📍 Відстань пішки: **{distance:.2f} км**\n\n"
@@ -74,7 +83,7 @@ def main():
         st.sidebar.error(error)
         return
     try:
-        stations = read_stations(DATA_FILE)
+        index = get_index(DATA_FILE)
     except core.StationDataError as e:
         st.error(str(e))
         return
@@ -82,14 +91,14 @@ def main():
     consumption = core.FUEL_CONSUMPTION[fuel_type]
     lat, lon = place.latitude, place.longitude
     radius = core.reach_radius_km(fuel_left, consumption, engine_volume)
-    candidates = core.find_reachable(stations, lat, lon, fuel_left, consumption, engine_volume)
+    candidates = core.find_reachable(index, lat, lon, fuel_left, consumption, engine_volume)
 
-    folium_static(mapview.build_map(lat, lon, radius, candidates))
+    show_map(mapview.map_html(lat, lon, radius, candidates))
     show_candidates(candidates)
     if candidates:
         show_route_choice(candidates, lat, lon)
     else:
-        show_walking_option(stations, lat, lon)
+        show_walking_option(index, lat, lon)
 
 
 if __name__ == "__main__":
