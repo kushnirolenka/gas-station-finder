@@ -3,7 +3,10 @@ import streamlit as st
 import pandas as pd
 import folium
 from streamlit_folium import folium_static
+import time
 from geopy.geocoders import Nominatim
+from geopy.exc import (GeocoderTimedOut, GeocoderUnavailable,
+                       GeocoderRateLimited, GeocoderServiceError)
 
 EPS = 1e-9  # допуск порівняння дійсних чисел (л)
 
@@ -50,6 +53,75 @@ def fetch_gas_stations_from_csv():
     except Exception as e:
         st.error(f"Виникла технічна помилка: {e}")
         return [], {}
+
+
+# --- Д3: геокодування з кешем, обробкою помилок і паузою між запитами ---
+MIN_INTERVAL = 1.1  # с між мережевими запитами (правила використання Nominatim)
+
+MESSAGES = {
+    "empty": "Введіть адресу.",
+    "not_found": "Адресу не знайдено. Уточніть місто, вулицю та номер будинку.",
+    "timeout": "Сервіс геокодування не відповів вчасно. Спробуйте ще раз.",
+    "rate_limit": "Забагато запитів до сервісу геокодування. Зачекайте хвилину.",
+    "unavailable": "Сервіс геокодування тимчасово недоступний. Спробуйте пізніше.",
+    "unknown": "Не вдалося визначити адресу через технічну помилку.",
+}
+
+
+class GeocodingService:
+    """Обгортка над геокодером: запам'ятовує вдалі відповіді й повертає
+    зрозумілі повідомлення замість винятків."""
+
+    def __init__(self, backend, min_interval=MIN_INTERVAL,
+                 clock=time.monotonic, sleep=time.sleep):
+        self._backend = backend
+        self._cache = {}
+        self._min_interval = min_interval
+        self._clock = clock
+        self._sleep = sleep
+        self._last_request = None
+        self.network_calls = 0
+
+    @staticmethod
+    def normalize(address):
+        return " ".join(address.split()).casefold()
+
+    def _wait(self):
+        if self._last_request is not None:
+            left = self._min_interval - (self._clock() - self._last_request)
+            if left > 0:
+                self._sleep(left)
+
+    def locate(self, address):
+        """Повертає (місце, None) або (None, повідомлення про помилку)."""
+        key = self.normalize(address or "")
+        if not key:
+            return None, MESSAGES["empty"]
+        if key in self._cache:
+            return self._cache[key], None
+        self._wait()
+        self._last_request = self._clock()
+        self.network_calls += 1
+        try:
+            place = self._backend.geocode(address)
+        except GeocoderTimedOut:
+            return None, MESSAGES["timeout"]
+        except GeocoderRateLimited:
+            return None, MESSAGES["rate_limit"]
+        except (GeocoderUnavailable, GeocoderServiceError):
+            return None, MESSAGES["unavailable"]
+        except Exception:
+            return None, MESSAGES["unknown"]
+        if place is None:
+            return None, MESSAGES["not_found"]
+        self._cache[key] = place  # невдалі відповіді не кешуються
+        return place, None
+
+
+@st.cache_resource
+def get_geocoder():
+    """Один екземпляр сервісу на весь сеанс: кеш переживає перезапуски програми."""
+    return GeocodingService(Nominatim(user_agent="gas_station_locator_v5", timeout=5))
 
 # Функція для обчислення необхідного палива
 def calculate_fuel_needed(distance, fuel_consumption, motor_power):
