@@ -1,17 +1,18 @@
 """Тести ітерації v1.1: коректність (дефекти Д1, Д2, Д6)."""
 import math
+from pathlib import Path
 from streamlit.testing.v1 import AppTest
 
-import program
+import core
 from tests.helpers import make_stations, random_queries
 
-APP = program.__file__
+APP = str(Path(__file__).resolve().parent.parent / "program.py")
 
 
 def test_reach_radius_inverts_fuel_needed():
     for fuel, c, k in [(0.25, 6.5, 1.02), (5, 8.5, 1.5), (10, 6.5, 0.5)]:
-        r = program.reach_radius(fuel, c, k)
-        assert math.isclose(program.calculate_fuel_needed(r, c, k), fuel, rel_tol=1e-9)
+        r = core.reach_radius_km(fuel, c, k)
+        assert math.isclose(core.fuel_needed_l(r, c, k), fuel, rel_tol=1e-9)
 
 
 def test_radius_and_fuel_agree_on_100_random_queries():
@@ -19,12 +20,12 @@ def test_radius_and_fuel_agree_on_100_random_queries():
     stations = make_stations()
     mismatches = 0
     for lat, lon, fuel, fuel_type, k in random_queries(100):
-        c = program.FUEL_CONSUMPTION[fuel_type]
-        r = program.reach_radius(fuel, c, k)
+        c = core.FUEL_CONSUMPTION[fuel_type]
+        r = core.reach_radius_km(fuel, c, k)
         for _, _, slat, slon, _ in stations:
-            d = program.haversine_distance(lat, lon, slat, slon)
+            d = core.haversine_km(lat, lon, slat, slon)
             inside = d <= r
-            reachable = program.calculate_fuel_needed(d, c, k) <= fuel + program.EPS
+            reachable = core.fuel_needed_l(d, c, k) <= fuel + core.EPS
             mismatches += inside != reachable
     assert mismatches == 0
 
@@ -52,3 +53,11 @@ def test_numbering_is_consecutive_and_matches_selectbox(app_env):
                if t[:1].isdigit() and t.split(".")[0].isdigit()]
     assert numbers == list(range(1, len(numbers) + 1)) and numbers
     assert at.sidebar.selectbox[1].options == [str(n) for n in numbers]
+
+
+def test_app_reports_missing_data_file(app_env):
+    app_env()
+    import os
+    os.remove("gas_stations.csv")
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    assert any("не знайдено" in e.value for e in at.error)
