@@ -44,7 +44,7 @@
 ## 📁 Структура проєкту
 
 ```
-gas-station-finder-thesis/
+gas-station-finder/
 ├── program.py           # Інтерфейс Streamlit
 ├── core.py              # Логіка: формули, пошук (NumPy, k-d дерево), дані, геокодування
 ├── mapview.py           # Побудова карти Folium та її кеш
@@ -61,8 +61,8 @@ gas-station-finder-thesis/
 
 **1. Клонуйте репозиторій:**
 ```bash
-git clone https://github.com/kushnirolenka/gas-station-finder-thesis
-cd gas-station-finder-thesis
+git clone https://github.com/kushnirolenka/gas-station-finder
+cd gas-station-finder
 ```
 
 **2. Встановіть залежності:**
